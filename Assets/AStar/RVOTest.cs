@@ -35,7 +35,7 @@ namespace AStarPathfinding
             m_rvo = AStarPathfinding.CreateRVOAlgorithm();
             
             // 创建RVO与A*的集成器
-            m_rvoIntegrator = AStarPathfinding.CreateRVOAStarIntegrator(m_astar, m_unitManager);
+            m_rvoIntegrator = AStarPathfinding.CreateRVOAStarIntegrator(m_map, m_unitManager);
             
             // 初始化单位列表
             m_units = new List<Unit>();

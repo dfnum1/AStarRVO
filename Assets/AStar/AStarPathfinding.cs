@@ -71,9 +71,9 @@ namespace AStarPathfinding
         //-------------------------------------------
 
         // 创建RVO与A*的集成器
-        public static RVOAStarIntegrator CreateRVOAStarIntegrator(AStar astar, UnitManager unitManager, int timeStep = 16)
+        public static RVOAStarIntegrator CreateRVOAStarIntegrator(Map map, UnitManager unitManager, int timeStep = 16)
         {
-            return new RVOAStarIntegrator(astar, unitManager, timeStep);
+            return new RVOAStarIntegrator(map, unitManager, timeStep);
         }
 
         //-------------------------------------------
