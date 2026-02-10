@@ -1,538 +1,324 @@
 using System.Collections.Generic;
 using UnityEngine;
+using ExternEngine;
 
 namespace AStarPathfinding
 {
-    // 整数向量类，用于RVO算法中的整数运算
-    public struct IntVector2
-    {
-        public int x;
-        public int z;
-
-        public IntVector2(int x, int z)
-        {
-            this.x = x;
-            this.z = z;
-        }
-
-        public static IntVector2 Zero { get { return new IntVector2(0, 0); } }
-
-        public static IntVector2 operator +(IntVector2 a, IntVector2 b)
-        {
-            return new IntVector2(a.x + b.x, a.z + b.z);
-        }
-
-        public static IntVector2 operator -(IntVector2 a, IntVector2 b)
-        {
-            return new IntVector2(a.x - b.x, a.z - b.z);
-        }
-
-        public static IntVector2 operator *(IntVector2 a, int scalar)
-        {
-            return new IntVector2(a.x * scalar, a.z * scalar);
-        }
-
-        public static IntVector2 operator /(IntVector2 a, int scalar)
-        {
-            return new IntVector2(a.x / scalar, a.z / scalar);
-        }
-
-        public int SqrMagnitude()
-        {
-            return x * x + z * z;
-        }
-
-        public int Magnitude()
-        {
-            return (int)Mathf.Sqrt(x * x + z * z);
-        }
-
-        public IntVector2 Normalized()
-        {
-            int mag = Magnitude();
-            if (mag == 0)
-                return Zero;
-            return this / mag;
-        }
-
-        public static int Dot(IntVector2 a, IntVector2 b)
-        {
-            return a.x * b.x + a.z * b.z;
-        }
-
-        public override string ToString()
-        {
-            return $"({x}, {z})";
-        }
-    }
-
-    // RVO智能体类
-    public class RVOAgent
-    {
-        public int AgentId { get; set; }
-        public IntVector2 Position { get; set; } // 位置（厘米）
-        public IntVector2 Velocity { get; set; } // 速度（厘米/秒）
-        public IntVector2 PreferredVelocity { get; set; } // 期望速度（厘米/秒）
-        public int Radius { get; set; } // 半径（厘米）
-        public int MaxSpeed { get; set; } // 最大速度（厘米/秒）
-        public int TimeHorizon { get; set; } // 时间范围（100倍秒，即厘秒）
-
-        public RVOAgent(int agentId, IntVector2 position, int radius = 50, int maxSpeed = 100)
-        {
-            AgentId = agentId;
-            Position = position;
-            Velocity = IntVector2.Zero;
-            PreferredVelocity = IntVector2.Zero;
-            Radius = radius;
-            MaxSpeed = maxSpeed;
-            TimeHorizon = 300; // 3秒
-        }
-
-        // 更新智能体状态
-        public void Update(int deltaTimeMs)
-        {
-            // 根据速度更新位置
-            // deltaTimeMs 是毫秒，转换为秒需要除以1000
-            // 所以速度（厘米/秒） * (deltaTimeMs / 1000) = 厘米
-            IntVector2 deltaPosition = Velocity * deltaTimeMs / 1000;
-            Position += deltaPosition;
-        }
-
-        // 设置目标位置，计算期望速度
-        public void SetTarget(IntVector2 targetPosition, int speed = -1)
-        {
-            IntVector2 direction = targetPosition - Position;
-            int desiredSpeed = (speed == -1) ? MaxSpeed : speed;
-
-            if (direction.SqrMagnitude() > 0)
-            {
-                PreferredVelocity = direction.Normalized() * desiredSpeed;
-            }
-            else
-            {
-                PreferredVelocity = IntVector2.Zero;
-            }
-        }
-    }
-
-    // RVO算法核心类
+    // RVO算法核心实现
     public class RVOAlgorithm
     {
-        private List<RVOAgent> m_agents;
-        private int m_timeStep; // 时间步长（毫秒）
-        private int m_neighborDist; // 邻居搜索距离（厘米）
-        private int m_maxNeighbors; // 最大邻居数量
-        private List<RVOAgent> m_tempNeighbors; // 临时邻居列表，用于优化GC
-        private List<IntVector2> m_tempVelocities; // 临时速度列表，用于优化GC
-
-        public RVOAlgorithm(int timeStep = 16, int neighborDist = 500, int maxNeighbors = 10)
+        private struct Agent
         {
-            m_agents = new List<RVOAgent>();
+            public Unit unit;
+            public FVector3 position;
+            public FVector3 velocity;
+            public FVector3 preferredVelocity;
+            public FFloat radius;
+            public FFloat maxSpeed;
+            public FFloat maxAcceleration;
+        }
+
+        private List<Agent> m_agents;
+        private int m_timeStep; // 时间步长（毫秒）
+        private FFloat m_neighborDist; // 邻居检测距离
+        private int m_maxNeighbors; // 最大邻居数量
+        private FFloat m_timeHorizon; // 时间视野
+        private FFloat m_timeHorizonObst; // 障碍物时间视野
+
+        public RVOAlgorithm(int timeStep = 16, float neighborDist = 200, int maxNeighbors = 10)
+        {
+            m_agents = new List<Agent>();
             m_timeStep = timeStep;
             m_neighborDist = neighborDist;
             m_maxNeighbors = maxNeighbors;
-
-            // 预分配临时列表，减少GC
-            m_tempNeighbors = new List<RVOAgent>(maxNeighbors * 2);
-            m_tempVelocities = new List<IntVector2>(20); // 预分配足够的空间
+            m_timeHorizon = new FFloat(1.0f);
+            m_timeHorizonObst = new FFloat(1.0f);
         }
 
-        // 添加智能体
-        public void AddAgent(RVOAgent agent)
-        {
-            m_agents.Add(agent);
-        }
-
-        // 移除智能体
-        public void RemoveAgent(int agentId)
-        {
-            m_agents.RemoveAll(a => a.AgentId == agentId);
-        }
-
-        // 执行一步RVO算法（优化版本）
-        public void DoStep()
-        {
-            // 先计算所有智能体的新速度
-            foreach (RVOAgent agent in m_agents)
-            {
-                // 使用优化的邻居搜索，减少GC
-                List<RVOAgent> neighbors = FindNeighbors(agent, m_tempNeighbors);
-
-                // 计算最优速度
-                IntVector2 newVelocity = ComputeOptimalVelocity(agent, neighbors);
-
-                // 更新速度
-                agent.Velocity = newVelocity;
-            }
-
-            // 再更新所有智能体的位置
-            foreach (RVOAgent agent in m_agents)
-            {
-                agent.Update(m_timeStep);
-            }
-        }
-
-        // 优化的邻居搜索，使用预分配的列表
-        private List<RVOAgent> FindNeighbors(RVOAgent agent, List<RVOAgent> tempNeighbors)
-        {
-            tempNeighbors.Clear();
-
-            foreach (RVOAgent other in m_agents)
-            {
-                if (other.AgentId != agent.AgentId)
-                {
-                    IntVector2 distance = other.Position - agent.Position;
-                    int sqrDist = distance.SqrMagnitude();
-                    int maxDistSqr = m_neighborDist * m_neighborDist;
-
-                    if (sqrDist < maxDistSqr)
-                    {
-                        tempNeighbors.Add(other);
-                    }
-                }
-            }
-
-            // 按距离排序（使用插入排序，对于小列表更高效）
-            for (int i = 1; i < tempNeighbors.Count; i++)
-            {
-                RVOAgent current = tempNeighbors[i];
-                int j = i - 1;
-                int currentDistSqr = (current.Position - agent.Position).SqrMagnitude();
-
-                while (j >= 0)
-                {
-                    int jDistSqr = (tempNeighbors[j].Position - agent.Position).SqrMagnitude();
-                    if (jDistSqr > currentDistSqr)
-                    {
-                        tempNeighbors[j + 1] = tempNeighbors[j];
-                        j--;
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-                tempNeighbors[j + 1] = current;
-            }
-
-            // 限制邻居数量
-            if (tempNeighbors.Count > m_maxNeighbors)
-            {
-                tempNeighbors.RemoveRange(m_maxNeighbors, tempNeighbors.Count - m_maxNeighbors);
-            }
-
-            return tempNeighbors;
-        }
-
-        // 计算最优速度
-        private IntVector2 ComputeOptimalVelocity(RVOAgent agent, List<RVOAgent> neighbors)
-        {
-            IntVector2 optimalVelocity = agent.PreferredVelocity;
-            float optimalCost = CalculateCost(agent, optimalVelocity, neighbors);
-
-            // 生成候选速度
-            List<IntVector2> candidateVelocities = GenerateCandidateVelocities(agent);
-
-            // 评估每个候选速度
-            foreach (IntVector2 candidate in candidateVelocities)
-            {
-                float cost = CalculateCost(agent, candidate, neighbors);
-                if (cost < optimalCost)
-                {
-                    optimalVelocity = candidate;
-                    optimalCost = cost;
-                }
-            }
-
-            return optimalVelocity;
-        }
-
-        // 生成候选速度（优化版本，使用预分配的列表）
-        private List<IntVector2> GenerateCandidateVelocities(RVOAgent agent)
-        {
-            m_tempVelocities.Clear();
-
-            // 添加期望速度
-            m_tempVelocities.Add(agent.PreferredVelocity);
-
-            // 添加当前速度
-            m_tempVelocities.Add(agent.Velocity);
-
-            // 添加零速度
-            m_tempVelocities.Add(IntVector2.Zero);
-
-            // 生成一些其他候选速度（减少采样数量，提高性能）
-            int numSamples = 6;
-            for (int i = 0; i < numSamples; i++)
-            {
-                float angle = 2 * Mathf.PI * i / numSamples;
-                int x = (int)(Mathf.Cos(angle) * agent.MaxSpeed);
-                int z = (int)(Mathf.Sin(angle) * agent.MaxSpeed);
-                m_tempVelocities.Add(new IntVector2(x, z));
-            }
-
-            // 确保速度不超过最大速度
-            int maxSpeedSqr = agent.MaxSpeed * agent.MaxSpeed;
-            for (int i = 0; i < m_tempVelocities.Count; i++)
-            {
-                IntVector2 candidate = m_tempVelocities[i];
-                int speedSqr = candidate.SqrMagnitude();
-
-                if (speedSqr > maxSpeedSqr)
-                {
-                    m_tempVelocities[i] = candidate.Normalized() * agent.MaxSpeed;
-                }
-            }
-
-            return m_tempVelocities;
-        }
-
-        // 计算速度的代价
-        private float CalculateCost(RVOAgent agent, IntVector2 velocity, List<RVOAgent> neighbors)
-        {
-            float cost = 0;
-
-            // 与期望速度的差距
-            IntVector2 velocityDiff = velocity - agent.PreferredVelocity;
-            cost += velocityDiff.SqrMagnitude() / 10000.0f; // 归一化
-
-            // 与其他智能体的碰撞风险
-            foreach (RVOAgent other in neighbors)
-            {
-                float collisionRisk = CalculateCollisionRisk(agent, other, velocity);
-                cost += collisionRisk;
-            }
-
-            return cost;
-        }
-
-        // 计算碰撞风险
-        private float CalculateCollisionRisk(RVOAgent agent, RVOAgent other, IntVector2 velocity)
-        {
-            IntVector2 relativePosition = other.Position - agent.Position;
-            IntVector2 relativeVelocity = other.Velocity - velocity;
-
-            int distanceSqr = relativePosition.SqrMagnitude();
-            int combinedRadius = agent.Radius + other.Radius;
-            int combinedRadiusSqr = combinedRadius * combinedRadius;
-
-            // 如果已经重叠，风险很高
-            if (distanceSqr < combinedRadiusSqr)
-            {
-                return 1000.0f;
-            }
-
-            // 计算相对速度与相对位置的点积
-            int dotProduct = IntVector2.Dot(relativeVelocity, relativePosition);
-
-            // 如果相对速度是远离的，风险较低
-            if (dotProduct > 0)
-            {
-                return 0.0f;
-            }
-
-            // 计算碰撞时间
-            int velocitySqr = relativeVelocity.SqrMagnitude();
-            if (velocitySqr == 0)
-            {
-                return 0.0f;
-            }
-
-            // 碰撞时间的计算
-            // t = -(v · r) / |v|²
-            int tNumerator = -dotProduct;
-            int tDenominator = velocitySqr;
-            int t = tNumerator * 1000 / tDenominator; // 乘以1000，转换为厘秒
-
-            // 如果碰撞时间大于时间范围，风险较低
-            if (t > agent.TimeHorizon)
-            {
-                return 0.0f;
-            }
-
-            // 计算碰撞风险
-            float risk = 1.0f - (float)t / agent.TimeHorizon;
-            return risk * 10.0f; // 权重
-        }
-
-        // 检查位置是否可行走（考虑静态障碍物）
-        private bool IsPositionWalkable(IntVector2 position, int radius)
-        {
-            // 这里需要实现静态障碍物的检查
-            // 由于RVOAlgorithm类没有直接访问地图的权限，
-            // 我们需要在RVOAStarIntegrator中实现这个功能
-            // 并将结果传递给RVOAlgorithm
-
-            // 暂时返回true，后续会在集成器中完善
-            return true;
-        }
-
-        // 获取所有智能体
-        public List<RVOAgent> GetAgents()
-        {
-            return m_agents;
-        }
-
-        // 清除所有智能体
-        public void ClearAgents()
-        {
-            m_agents.Clear();
-        }
-    }
-
-    // RVO与A*的集成类
-    public class RVOAStarIntegrator
-    {
-        private RVOAlgorithm m_rvo;
-        private UnitManager m_unitManager;
-        private Dictionary<int, RVOAgent> m_unitToAgentMap;
-        private float m_cellSize; // 地图格子大小（米）
-        private Map m_map; // 地图引用，用于检查静态障碍物
-
-        public RVOAStarIntegrator(Map map, UnitManager unitManager, int timeStep = 16)
-        {
-            m_unitManager = unitManager;
-            m_map = map;
-            m_cellSize = map.CellSize;
-            m_rvo = new RVOAlgorithm(timeStep);
-            m_unitToAgentMap = new Dictionary<int, RVOAgent>();
-        }
-
-        // 添加单位到RVO系统
+        // 添加单位
         public void AddUnit(Unit unit)
         {
-            // 将单位的世界坐标转换为RVO的整数坐标（厘米）
-            IntVector2 position = new IntVector2(
-                (int)(unit.Position.x * 100),
-                (int)(unit.Position.z * 100)
-            );
+            // 计算基于体积的半径
+            float actualRadius = Mathf.Max(unit.Width, unit.Height) * 0.5f;
+            unit.Radius = actualRadius;
 
-            // 单位半径（厘米）
-            int radius = (int)(Mathf.Max(unit.Width, unit.Height) * m_cellSize * 100 * 0.5f);
-
-            // 最大速度（厘米/秒）
-            int maxSpeed = 100; // 1米/秒
-
-            // 创建RVO智能体
-            RVOAgent agent = new RVOAgent(unit.UnitId, position, radius, maxSpeed);
-
-            // 添加到RVO系统
-            m_rvo.AddAgent(agent);
-            m_unitToAgentMap[unit.UnitId] = agent;
+            Agent agent = new Agent
+            {
+                unit = unit,
+                position = unit.Position,
+                velocity = FVector3.zero,
+                preferredVelocity = FVector3.zero,
+                radius = new FFloat(actualRadius),
+                maxSpeed = new FFloat(5.0f), // 最大速度5m/s
+                maxAcceleration = new FFloat(10.0f) // 最大加速度10m/s²
+            };
+            m_agents.Add(agent);
         }
 
         // 移除单位
         public void RemoveUnit(int unitId)
         {
-            if (m_unitToAgentMap.ContainsKey(unitId))
-            {
-                m_rvo.RemoveAgent(unitId);
-                m_unitToAgentMap.Remove(unitId);
-            }
+            m_agents.RemoveAll(agent => agent.unit.UnitId == unitId);
         }
 
         // 更新单位目标
-        public void UpdateUnitTarget(Unit unit, Vector3 targetPosition)
+        public void UpdateUnitTarget(Unit unit, Vector3 targetPosition, FFloat speed)
         {
-            if (m_unitToAgentMap.TryGetValue(unit.UnitId, out RVOAgent agent))
+            for (int i = 0; i < m_agents.Count; i++)
             {
-                // 将世界坐标转换为RVO的整数坐标（厘米）
-                IntVector2 target = new IntVector2(
-                    (int)(targetPosition.x * 100),
-                    (int)(targetPosition.z * 100)
-                );
+                Agent agent = m_agents[i];
+                if (agent.unit.UnitId == unit.UnitId)
+                {
+                    // 计算期望速度
+                    Vector3 direction = (targetPosition - unit.Position).normalized;
+                    float distance = Vector3.Distance(unit.Position, targetPosition);
+                    speed = FMath.Min(speed, distance / (m_timeStep / 1000.0f));
+                    Vector3 desiredVelocity = direction * speed;
 
-                // 更新RVO智能体的目标
-                agent.SetTarget(target);
+                    agent.preferredVelocity = desiredVelocity;
+                    m_agents[i] = agent;
+                    break;
+                }
             }
         }
 
-        // 执行一步集成算法
+        public void ClearVelocity (Unit unit)
+        {
+            for (int i = 0; i < m_agents.Count; i++)
+            {
+                Agent agent = m_agents[i];
+                if (agent.unit.UnitId == unit.UnitId)
+                {
+                    agent.velocity = FVector3.zero;
+                    agent.preferredVelocity = FVector3.zero;
+                    m_agents[i] = agent;
+                    break;
+                }
+            }
+        }
+
+        // 执行一步RVO计算
         public void DoStep()
         {
-            // 执行RVO算法
-            m_rvo.DoStep();
-
-            // 更新单位位置和速度
-            foreach (var kvp in m_unitToAgentMap)
+            // 为每个智能体计算新速度
+            for (int i = 0; i < m_agents.Count; i++)
             {
-                int unitId = kvp.Key;
-                RVOAgent agent = kvp.Value;
+                Agent agent = m_agents[i];
 
-                // 将RVO的整数坐标转换回世界坐标（米）
-                Vector3 position = new Vector3(
-                    agent.Position.x / 100.0f,
-                    0,
-                    agent.Position.z / 100.0f
-                );
+                // 找到邻居
+                List<Agent> neighbors = GetNeighbors(agent);
 
-                // 检查位置是否可行走（考虑静态障碍物）
-                if (IsPositionWalkable(position))
-                {
-                    // 更新单位位置
-                    m_unitManager.UpdateUnitPosition(unitId, position);
-                }
-                else
-                {
-                    // 如果位置不可行走，尝试寻找附近的可行走位置
-                    Vector3 newPosition = FindNearestWalkablePosition(position);
-                    if (newPosition != Vector3.zero)
-                    {
-                        m_unitManager.UpdateUnitPosition(unitId, newPosition);
-                        // 更新RVO智能体的位置
-                        agent.Position = new IntVector2(
-                            (int)(newPosition.x * 100),
-                            (int)(newPosition.z * 100)
-                        );
-                    }
-                }
+                // 计算最优速度
+                FVector3 newVelocity = ComputeNewVelocity(agent, neighbors);
+
+                // 更新速度
+                agent.velocity = newVelocity;
+                m_agents[i] = agent;
+            }
+
+            // 更新所有智能体的位置
+            UpdateAgentPositions();
+
+            // 更新单位位置
+            for (int i = 0; i < m_agents.Count; i++)
+            {
+                Agent agent = m_agents[i];
+                agent.unit.Position = agent.position;
+                agent.unit.IsMoving = (agent.velocity.magnitude > new FFloat(0.1f));
+                m_agents[i] = agent;
             }
         }
 
-        // 检查位置是否可行走（考虑静态障碍物）
-        private bool IsPositionWalkable(Vector3 position)
+        // 更新智能体位置
+        private void UpdateAgentPositions()
         {
-            int x = Mathf.FloorToInt(position.x / m_cellSize);
-            int z = Mathf.FloorToInt(position.z / m_cellSize);
+            FFloat deltaTime = new FFloat(m_timeStep / 1000.0f);
 
-            if (x < 0 || x >= m_map.Width || z < 0 || z >= m_map.Height)
+            for (int i = 0; i < m_agents.Count; i++)
             {
-                return false;
-            }
+                Agent agent = m_agents[i];
 
-            Grid grid = m_map.GetGrid(x, z);
-            return grid != null && grid.IsWalkable;
+                // 更新位置：position = position + velocity * deltaTime
+                FVector3 displacement = agent.velocity * deltaTime;
+                agent.position = agent.position + displacement;
+                m_agents[i] = agent;
+            }
         }
 
-        // 寻找最近的可行走位置
-        private Vector3 FindNearestWalkablePosition(Vector3 position)
+        // 获取邻居
+        private List<Agent> GetNeighbors(Agent agent)
         {
-            int radius = 3; // 搜索半径
+            List<Agent> neighbors = new List<Agent>();
+            List<(Agent, FFloat)> neighborDistances = new List<(Agent, FFloat)>();
 
-            for (int i = 1; i <= radius; i++)
+            foreach (var otherAgent in m_agents)
             {
-                // 搜索当前半径的所有点
-                for (int xOffset = -i; xOffset <= i; xOffset++)
+                if (otherAgent.unit.UnitId == agent.unit.UnitId)
+                    continue;
+
+                FFloat distance = (agent.position - otherAgent.position).magnitude;
+                if (distance < m_neighborDist)
                 {
-                    for (int zOffset = -i; zOffset <= i; zOffset++)
-                    {
-                        // 只搜索半径的边缘
-                        if (Mathf.Abs(xOffset) == i || Mathf.Abs(zOffset) == i)
-                        {
-                            Vector3 testPosition = position + new Vector3(xOffset * m_cellSize, 0, zOffset * m_cellSize);
-                            if (IsPositionWalkable(testPosition))
-                            {
-                                return testPosition;
-                            }
-                        }
-                    }
+                    neighborDistances.Add((otherAgent, distance));
                 }
             }
 
-            return Vector3.zero; // 没有找到可行走位置
+            // 按距离排序，取最近的几个
+            neighborDistances.Sort((a, b) => a.Item2.CompareTo(b.Item2));
+
+            for (int i = 0; i < Mathf.Min(neighborDistances.Count, m_maxNeighbors); i++)
+            {
+                neighbors.Add(neighborDistances[i].Item1);
+            }
+
+            return neighbors;
         }
 
-        // 获取RVO算法实例
-        public RVOAlgorithm RVO { get { return m_rvo; } }
+        // 计算新速度
+        private FVector3 ComputeNewVelocity(Agent agent, List<Agent> neighbors)
+        {
+            FVector3 newVelocity = agent.preferredVelocity;
+
+            // 速度限制
+            FFloat speed = newVelocity.magnitude;
+            if (speed > agent.maxSpeed)
+            {
+                // 归一化后乘以最大速度
+                FVector3 normalized = newVelocity.normalized;
+                newVelocity = normalized * agent.maxSpeed;
+            }
+
+            // 避免碰撞
+            FFloat minDistance = FFloat.FLT_MAX;
+            FVector3 bestVelocity = newVelocity;
+
+            // 采样速度空间
+            List<FVector3> candidateVelocities = GenerateCandidateVelocities(agent);
+            candidateVelocities.Add(newVelocity); // 添加首选速度
+
+            foreach (var candidate in candidateVelocities)
+            {
+                FFloat distance = ComputeDistanceToCollision(agent, candidate, neighbors);
+                if (distance > minDistance)
+                {
+                    minDistance = distance;
+                    bestVelocity = candidate;
+                }
+            }
+
+            return bestVelocity;
+        }
+
+        // 生成候选速度
+        private List<FVector3> GenerateCandidateVelocities(Agent agent)
+        {
+            List<FVector3> candidates = new List<FVector3>();
+
+            // 生成不同方向的候选速度
+            float[] angles = { 0, 45, 90, 135, 180, 225, 270, 315 };
+            float[] speeds = { 0, 0.5f, 1.0f };
+
+            foreach (float angle in angles)
+            {
+                foreach (float speedFactor in speeds)
+                {
+                    float speed = speedFactor * (float)agent.maxSpeed;
+                    float radian = angle * Mathf.Deg2Rad;
+
+                    Vector3 velocity = new Vector3(
+                        Mathf.Cos(radian) * speed,
+                        0,
+                        Mathf.Sin(radian) * speed
+                    );
+
+                    candidates.Add(velocity);
+                }
+            }
+
+            return candidates;
+        }
+
+        // 计算到碰撞的距离
+        private FFloat ComputeDistanceToCollision(Agent agent, FVector3 velocity, List<Agent> neighbors)
+        {
+            FFloat minDistance = FFloat.FLT_MAX;
+
+            foreach (var neighbor in neighbors)
+            {
+                // 相对速度
+                FVector3 relativeVelocity = velocity - neighbor.velocity;
+
+                // 相对位置
+                FVector3 relativePosition = neighbor.position - agent.position;
+
+                // 距离的平方
+                FFloat distSq = relativePosition.sqrMagnitude;
+                FFloat combinedRadius = agent.radius + neighbor.radius;
+                FFloat combinedRadiusSq = combinedRadius * combinedRadius;
+
+                // 如果已经碰撞
+                if (distSq < combinedRadiusSq)
+                {
+                    return FFloat.zero;
+                }
+
+                // 计算碰撞时间
+                FFloat timeToCollision = ComputeTimeToCollision(relativePosition, relativeVelocity, combinedRadius);
+                if (timeToCollision < minDistance)
+                {
+                    minDistance = timeToCollision;
+                }
+            }
+
+            return minDistance;
+        }
+
+        // 计算碰撞时间
+        private FFloat ComputeTimeToCollision(FVector3 relativePosition, FVector3 relativeVelocity, FFloat combinedRadius)
+        {
+            FFloat a = relativeVelocity.sqrMagnitude;
+            if (a == FFloat.zero)
+            {
+                return FFloat.FLT_MAX; // 相对速度为0，不会碰撞
+            }
+
+            FFloat b = 2 * FVector3.Dot(relativePosition, relativeVelocity);
+            FFloat c = relativePosition.sqrMagnitude - combinedRadius * combinedRadius;
+
+            // 解二次方程
+            FFloat discriminant = b * b - 4 * a * c;
+            if (discriminant < FFloat.zero)
+            {
+                return FFloat.FLT_MAX; // 没有实根，不会碰撞
+            }
+
+            FFloat sqrtDiscriminant = FMath.Sqrt(discriminant);
+            FFloat t1 = (-b - sqrtDiscriminant) / (2 * a);
+            FFloat t2 = (-b + sqrtDiscriminant) / (2 * a);
+
+            // 取最小的正根
+            if (t1 > FFloat.zero && t2 > FFloat.zero)
+            {
+                return FMath.Min(t1, t2);
+            }
+            else if (t1 > FFloat.zero)
+            {
+                return t1;
+            }
+            else if (t2 > FFloat.zero)
+            {
+                return t2;
+            }
+            else
+            {
+                return FFloat.FLT_MAX; // 已经碰撞过了
+            }
+        }
+
+        // 清除所有智能体
+        public void Clear()
+        {
+            m_agents.Clear();
+        }
     }
 }

@@ -1,3 +1,4 @@
+using ExternEngine;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -13,7 +14,8 @@ namespace AStarPathfinding
         public int UnitId { get; set; }
         public float Radius { get; set; }
         public bool IsMoving { get; set; }
-        
+        public FFloat MoveSpeed { get; set; }
+
         public Unit(int unitId, Vector3 position, int width = 1, int height = 1)
         {
             UnitId = unitId;
@@ -22,6 +24,7 @@ namespace AStarPathfinding
             Height = height;
             Radius = Mathf.Max(width, height) * 0.5f;
             IsMoving = false;
+            MoveSpeed = 1;
         }
     }
     

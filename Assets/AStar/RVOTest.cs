@@ -14,7 +14,6 @@ namespace AStarPathfinding
         private AStar m_astar;
         private UnitManager m_unitManager;
         private RVOAlgorithm m_rvo;
-        private RVOAStarIntegrator m_rvoIntegrator;
         private List<Unit> m_units;
         private List<GameObject> m_unitVisuals;
         private float m_testTime;
@@ -33,9 +32,6 @@ namespace AStarPathfinding
             
             // 创建RVO算法
             m_rvo = AStarPathfinding.CreateRVOAlgorithm();
-            
-            // 创建RVO与A*的集成器
-            m_rvoIntegrator = AStarPathfinding.CreateRVOAStarIntegrator(m_map, m_unitManager);
             
             // 初始化单位列表
             m_units = new List<Unit>();
@@ -63,10 +59,8 @@ namespace AStarPathfinding
                 
                 // 添加到单位管理器
                 m_unitManager.AddUnit(unit);
-                
-                // 添加到RVO系统
-                m_rvoIntegrator.AddUnit(unit);
-                
+                m_rvo.AddUnit(unit);
+                 
                 // 创建可视化对象
                 GameObject visual = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                 visual.transform.position = position;
@@ -77,9 +71,6 @@ namespace AStarPathfinding
                 // 随机生成目标位置
                 Vector2 randomTarget = Random.insideUnitCircle * targetRadius;
                 Vector3 targetPosition = new Vector3(randomTarget.x, 0, randomTarget.y);
-                
-                // 设置单位目标
-                m_rvoIntegrator.UpdateUnitTarget(unit, targetPosition);
             }
         }
         
@@ -91,7 +82,7 @@ namespace AStarPathfinding
                 m_testTime += Time.deltaTime;
                 
                 // 执行RVO算法
-                m_rvoIntegrator.DoStep();
+                m_rvo.DoStep();
                 
                 // 更新可视化
                 UpdateVisuals();

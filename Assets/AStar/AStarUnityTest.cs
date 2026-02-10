@@ -1,5 +1,8 @@
 using UnityEngine;
 using System.Collections.Generic;
+using Framework.Physic.RVO;
+using ExternEngine;
+using Random = UnityEngine.Random;
 
 namespace AStarPathfinding
 {
@@ -27,6 +30,7 @@ namespace AStarPathfinding
         private struct UnitInfo
         {
             public AStar astar;
+            public int rvoId;
             public Unit unit;
             public Color color;
             public UnitState state;
@@ -38,8 +42,9 @@ namespace AStarPathfinding
 
         private Map m_map;
         private UnitManager m_unitManager;
-        private RVOAlgorithm m_rvo;
-        private RVOAStarIntegrator m_rvoIntegrator;
+        //    private RVOAlgorithm m_rvoIntegrator;
+        WorldPhysic m_WorldRVO;
+
         private GameObject[,] m_gridObjects;
         private bool m_isCalculatingPath = false;
         private List<UnitInfo> m_unitInfos = new List<UnitInfo>();
@@ -61,7 +66,8 @@ namespace AStarPathfinding
             m_unitManager = AStarPathfinding.CreateUnitManager(m_map);
 
             // 初始化RVO
-            m_rvoIntegrator = AStarPathfinding.CreateRVOAStarIntegrator(m_map, m_unitManager);
+            //  m_rvoIntegrator = AStarPathfinding.CreateRVOAlgorithm();
+            m_WorldRVO = new WorldPhysic();
 
             // 创建10个单位
             CreateUnits();
@@ -96,13 +102,13 @@ namespace AStarPathfinding
                 // 创建单位
                 Unit unit = new Unit(i, startPos, unitWidth, unitHeight);
                 m_unitManager.AddUnit(unit);
-                m_rvoIntegrator.AddUnit(unit);
+                //    m_rvoIntegrator.AddUnit(unit);
 
                 // 创建单位显示对象
                 float size = UnityEngine.Random.Range(1, 3);
                 GameObject unitObj = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                 unitObj.transform.position = startPos + new Vector3(0, 0.5f, 0);
-                unitObj.transform.localScale = new Vector3(0.5f, 0.5f, 0.5f)* size;
+                unitObj.transform.localScale = new Vector3(0.5f, 0.5f, 0.5f) * size;
                 unitObj.name = "Unit_" + i;
                 Color color = GetRandomColor();
                 unitObj.GetComponent<Renderer>().material.color = color;
@@ -118,12 +124,15 @@ namespace AStarPathfinding
                     waitTime = 0f,
                     elapsedWaitTime = 0f
                 };
+                info.unit.MoveSpeed = UnityEngine.Random.Range(3, 10);
                 // 初始化AStar
                 info.astar = AStarPathfinding.CreateAStar(m_map);
                 info.astar.SetUseMultiThreading(useMultiThreading);
                 info.astar.SetUnitSize((int)size, unitHeight);
                 info.color = color;
+                info.rvoId = m_WorldRVO.AddNode(unit.Position, FVector3.zero, unitWidth, unitHeight);
                 m_unitInfos.Add(info);
+
             }
         }
 
@@ -149,9 +158,20 @@ namespace AStarPathfinding
         private void Update()
         {
             // RVO更新
-            if (useRVO && m_rvoIntegrator != null)
+            if (useRVO && m_WorldRVO != null)
             {
-                m_rvoIntegrator.DoStep();
+                //  m_rvoIntegrator.DoStep();
+                m_WorldRVO.Update(Time.deltaTime);
+
+                // 更新RVO控制下的单位显示对象位置
+                foreach (var info in m_unitInfos)
+                {
+                    if (m_unitGameObjects.ContainsKey(info.unit))
+                    {
+                        Vector3 unitPos = info.unit.Position;
+                        m_unitGameObjects[info.unit].transform.position = unitPos + new Vector3(0, 0.5f, 0);
+                    }
+                }
             }
 
             // 更新单位状态
@@ -213,6 +233,13 @@ namespace AStarPathfinding
                 }
                 Debug.Log("多线程模式: " + useMultiThreading);
             }
+
+            // R键切换RVO模式
+            if (Input.GetKeyDown(KeyCode.R))
+            {
+                useRVO = !useRVO;
+                Debug.Log("RVO模式: " + useRVO);
+            }
         }
 
         private void UpdateUnits()
@@ -220,6 +247,11 @@ namespace AStarPathfinding
             for (int i = 0; i < m_unitInfos.Count; i++)
             {
                 UnitInfo info = m_unitInfos[i];
+                if (m_WorldRVO != null)
+                {
+                    m_WorldRVO.SetNodePhysicRadius(info.rvoId, info.unit.Radius);
+                    m_WorldRVO.SetNodePosition(info.rvoId, info.unit.Position);
+                }
                 switch (info.state)
                 {
                     case UnitState.Idle:
@@ -251,53 +283,125 @@ namespace AStarPathfinding
                         break;
 
                     case UnitState.Moving:
-                        if (info.path != null && info.currentPathIndex < info.path.Count)
+                        if (!useRVO)
                         {
-                            // 获取当前目标点
-                            Grid currentGrid = info.path[info.currentPathIndex];
-                            Vector3 waypoint = new Vector3(currentGrid.X, 0, currentGrid.Z);
-
-                            // 向目标点移动
-                            Vector3 currentPos = info.unit.Position;
-                            Vector3 direction = (waypoint - currentPos).normalized;
-                            Vector3 newPos = currentPos + direction * 2f * Time.deltaTime;
-
-                            // 检查是否到达当前路径点
-                            if (Vector3.Distance(newPos, waypoint) < 0.1f)
+                            // 未启用RVO时，使用原有的移动逻辑
+                            if (info.path != null && info.currentPathIndex < info.path.Count)
                             {
-                                // 到达路径点，移动到下一个
-                                info.unit.Position=waypoint;
-                                info.currentPathIndex++;
-                                m_unitInfos[i] = info;
+                                // 获取当前目标点
+                                Grid currentGrid = info.path[info.currentPathIndex];
+                                Vector3 waypoint = new Vector3(currentGrid.X, 0, currentGrid.Z);
 
-                                // 更新显示对象位置
-                                if (m_unitGameObjects.ContainsKey(info.unit))
+                                // 向目标点移动
+                                Vector3 currentPos = info.unit.Position;
+                                Vector3 direction = (waypoint - currentPos).normalized;
+                                Vector3 newPos = currentPos + direction * 2f * Time.deltaTime;
+
+                                // 检查是否到达当前路径点
+                                if (Vector3.Distance(newPos, waypoint) < 0.1f)
                                 {
-                                    m_unitGameObjects[info.unit].transform.position = waypoint + new Vector3(0, 0.5f, 0);
+                                    // 到达路径点，移动到下一个
+                                    info.unit.Position = waypoint;
+                                    info.currentPathIndex++;
+                                    m_unitInfos[i] = info;
+
+                                    // 更新显示对象位置
+                                    if (m_unitGameObjects.ContainsKey(info.unit))
+                                    {
+                                        m_unitGameObjects[info.unit].transform.position = waypoint + new Vector3(0, 0.5f, 0);
+                                    }
+                                }
+                                else
+                                {
+                                    // 更新单位位置
+                                    info.unit.Position = newPos;
+                                    m_unitInfos[i] = info;
+
+                                    // 更新显示对象位置
+                                    if (m_unitGameObjects.ContainsKey(info.unit))
+                                    {
+                                        m_unitGameObjects[info.unit].transform.position = newPos + new Vector3(0, 0.5f, 0);
+                                    }
+                                }
+
+                                // 检查是否到达最终目标
+                                if (info.currentPathIndex >= info.path.Count)
+                                {
+                                    // 到达目标，开始等待
+                                    info.state = UnitState.Waiting;
+                                    info.waitTime = Random.Range(1f, 3f);
+                                    info.elapsedWaitTime = 0f;
+                                    info.path.Clear();
+                                    m_unitInfos[i] = info;
                                 }
                             }
-                            else
+                        }
+                        else
+                        {
+                            // 启用RVO时，由RVO系统控制移动
+                            if (m_WorldRVO != null)
                             {
-                                // 更新单位位置
-                                info.unit.Position = newPos;
-                                m_unitInfos[i] = info;
-
-                                // 更新显示对象位置
-                                if (m_unitGameObjects.ContainsKey(info.unit))
+                                if (info.path != null && info.currentPathIndex < info.path.Count)
                                 {
-                                    m_unitGameObjects[info.unit].transform.position = newPos + new Vector3(0, 0.5f, 0);
-                                }
-                            }
+                                    Grid currentGrid = info.path[info.currentPathIndex];
+                                    Vector3 waypoint = new Vector3(currentGrid.X, 0, currentGrid.Z);
+                                    // m_rvoIntegrator.UpdateUnitTarget(info.unit, waypoint, info.unit.MoveSpeed);
+                                    m_WorldRVO.SetNodeTargetPositon(info.rvoId, waypoint);
+                                    var newVelocity = m_WorldRVO.ComputerNewVelocity(info.rvoId, out var isCollisoned, info.unit.MoveSpeed);
+                                    var newPosition = info.unit.Position + newVelocity * Time.deltaTime;
+                                    if (IsWalkable(newPosition))
+                                    {
+                                        // 如果可行走，更新位置
+                                        info.unit.Position = newPosition;
+                                    }
+                                    else
+                                    {
+                                        // 如果不可行走，尝试调整速度或位置
+                                        // 这里可以添加更复杂的调整逻辑，比如沿切线方向移动
+                                        // 简单处理：不更新位置，等待下一次计算
+                                        m_WorldRVO.SetNodeVelocity(info.rvoId, FVector3.zero);
+                                        m_WorldRVO.SetNodePrefSpeed(info.rvoId, FVector3.zero);
+                                    }
 
-                            // 检查是否到达最终目标
-                            if (info.currentPathIndex >= info.path.Count)
-                            {
-                                // 到达目标，开始等待
-                                info.state = UnitState.Waiting;
-                                info.waitTime = Random.Range(1f, 3f);
-                                info.elapsedWaitTime = 0f;
-                                info.path.Clear();
+                                    // 检查是否到达最终目标
+                                    if (Vector3.Distance(info.unit.Position, waypoint) < 0.5f)
+                                    {
+                                        info.currentPathIndex++;
+
+                                        if(info.currentPathIndex>= info.path.Count)
+                                        {
+                                            // 到达目标，开始等待
+                                            info.state = UnitState.Waiting;
+                                            info.waitTime = Random.Range(1f, 3f);
+                                            info.elapsedWaitTime = 0f;
+                                            m_WorldRVO.SetNodePrefSpeed(info.rvoId,FVector3.zero);
+                                            info.path.Clear();
+                                        }
+                                    }
+                                }
                                 m_unitInfos[i] = info;
+                            }
+                            if (m_unitGameObjects.ContainsKey(info.unit))
+                            {
+                                m_unitGameObjects[info.unit].transform.position = info.unit.Position + new Vector3(0, 0.5f, 0);
+                            }
+                            // 只需要检查是否到达目标
+                            if (info.path != null && info.path.Count > 0)
+                            {
+                                Grid finalGrid = info.path[info.path.Count - 1];
+                                Vector3 targetWaypoint = new Vector3(finalGrid.X, 0, finalGrid.Z);
+
+                                // 检查是否到达最终目标
+                                if (Vector3.Distance(info.unit.Position, targetWaypoint) < 0.5f)
+                                {
+                                    // 到达目标，开始等待
+                                    info.state = UnitState.Waiting;
+                                    info.waitTime = Random.Range(1f, 3f);
+                                    info.elapsedWaitTime = 0f;
+                                    m_WorldRVO.SetNodePrefSpeed(info.rvoId, FVector3.zero);
+                                    info.path.Clear();
+                                    m_unitInfos[i] = info;
+                                }
                             }
                         }
                         break;
