@@ -1,76 +1,72 @@
-using System.Collections.Generic;
+/********************************************************************
+生成日期:	3:10:2019  15:03
+类    名: 	AStarPathfinding
+作    者:	HappLI
+描    述:	AStar寻路系统核心类，提供地图创建、路径搜索、路径平滑、路径缓存和LOD系统接口，支持从二进制文件加载地图数据。
+*********************************************************************/
 using System.IO;
-
-namespace AStarPathfinding
+namespace Framework.Pathfinding.Runtime
 {
-    // 主入口类，用于Unity环境
-    public static class AStarPathfinding
+    public class AStarPathfinding 
     {
+        ThreadPoolManager m_ThreadPool = null;
+        //-------------------------------------------
+        internal ThreadPoolManager threadPoolManager
+        {
+            get
+            {
+                if (m_ThreadPool == null)
+                {
+                    m_ThreadPool = new ThreadPoolManager();
+                }
+                return m_ThreadPool;
+            }
+        }
+        //-------------------------------------------
         // 创建地图
-        public static Map CreateMap(int width, int height, float cellSize = 1f)
+        public Map CreateMap(int width, int height, float cellSize = 1f)
         {
             return new Map(width, height, cellSize);
         }
-
-        //-------------------------------------------
-
-        // 创建AStar寻路实例
-        public static AStar CreateAStar(Map map)
-        {
-            return new AStar(map);
-        }
-
         //-------------------------------------------
 
         // 创建单位管理器
-        public static UnitManager CreateUnitManager(Map map)
+        public UnitManager CreateUnitManager(Map map)
         {
             return new UnitManager(map);
         }
-
         //-------------------------------------------
 
-        // 创建路径平滑器
-        public static PathSmoother CreatePathSmoother(Map map)
+        // 创建RVO算法实例
+        public RVOAlgorithm CreateRVOAlgorithm(int timeStep = 16, int neighborDist = 500, int maxNeighbors = 10)
+        {
+            return new RVOAlgorithm(timeStep, neighborDist, maxNeighbors);
+        }
+        //-------------------------------------------
+        public AStar CreateAStar(Map map)
+        {
+            return new AStar(this, map);
+        }
+        //-------------------------------------------
+        public PathSmoother CreatePathSmoother(Map map)
         {
             return new PathSmoother(map);
         }
-
         //-------------------------------------------
-
-        // 创建目标管理器
-        public static TargetManager CreateTargetManager(Map map)
-        {
-            return new TargetManager(map.CellSize);
-        }
-
-        //-------------------------------------------
-
-        // 创建路径缓存
-        public static PathCache CreatePathCache(int maxCacheSize = 1000, float cacheLifetime = 30f)
+        public PathCache CreatePathCache(int maxCacheSize = 1000, float cacheLifetime = 30f)
         {
             return new PathCache(maxCacheSize, cacheLifetime);
         }
 
         //-------------------------------------------
-
         // 创建LOD系统
-        public static LODSystem CreateLODSystem(Map map)
+        public LODSystem CreateLODSystem(Map map)
         {
             return new LODSystem(map);
         }
-
         //-------------------------------------------
-
-        // 创建RVO算法实例
-        public static RVOAlgorithm CreateRVOAlgorithm(int timeStep = 16, int neighborDist = 500, int maxNeighbors = 10)
-        {
-            return new RVOAlgorithm(timeStep, neighborDist, maxNeighbors);
-        }
-        //-------------------------------------------
-
         // 从二进制文件加载地图
-        public static Map LoadMapFromBinary(string filePath)
+        public Map LoadMapFromBinary(string filePath)
         {
             if (!File.Exists(filePath))
             {

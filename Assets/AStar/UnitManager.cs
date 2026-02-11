@@ -2,7 +2,7 @@ using ExternEngine;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace AStarPathfinding
+namespace Framework.Pathfinding.Runtime
 {
     // 单位基类
     public class Unit

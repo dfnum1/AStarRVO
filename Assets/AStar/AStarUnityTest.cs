@@ -4,7 +4,7 @@ using Framework.Physic.RVO;
 using ExternEngine;
 using Random = UnityEngine.Random;
 
-namespace AStarPathfinding
+namespace Framework.Pathfinding.Runtime
 {
     public class AStarUnityTest : MonoBehaviour
     {
@@ -57,16 +57,18 @@ namespace AStarPathfinding
         private Color m_startColor = Color.blue;
         private Color m_endColor = Color.red;
 
+        AStarPathfinding m_System = new AStarPathfinding();
+
         private void Start()
         {
             // 初始化地图
             InitializeMap();
 
             // 初始化单位管理器
-            m_unitManager = AStarPathfinding.CreateUnitManager(m_map);
+            m_unitManager = m_System.CreateUnitManager(m_map);
 
             // 初始化RVO
-            //  m_rvoIntegrator = AStarPathfinding.CreateRVOAlgorithm();
+            //  m_rvoIntegrator = m_System.CreateRVOAlgorithm();
             m_WorldRVO = new WorldPhysic();
 
             // 创建10个单位
@@ -126,7 +128,7 @@ namespace AStarPathfinding
                 };
                 info.unit.MoveSpeed = UnityEngine.Random.Range(3, 10);
                 // 初始化AStar
-                info.astar = AStarPathfinding.CreateAStar(m_map);
+                info.astar = m_System.CreateAStar(m_map);
                 info.astar.SetUseMultiThreading(useMultiThreading);
                 info.astar.SetUnitSize((int)size, unitHeight);
                 info.color = color;
@@ -423,7 +425,7 @@ namespace AStarPathfinding
         private void InitializeMap()
         {
             // 创建地图
-            m_map = AStarPathfinding.CreateMap(mapWidth, mapHeight, cellSize);
+            m_map = m_System.CreateMap(mapWidth, mapHeight, cellSize);
 
             // 创建网格对象
             m_gridObjects = new GameObject[mapWidth, mapHeight];

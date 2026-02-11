@@ -1,78 +1,18 @@
+/********************************************************************
+生成日期:	3:10:2019  15:03
+类    名: 	AStar
+作    者:	HappLI
+描    述:	AStar寻路类，实现AStar算法的核心逻辑
+*********************************************************************/
 using System;
 using System.Collections.Generic;
-using System.Threading;
 using System.Threading.Tasks;
-using UnityEngine;
-
-namespace AStarPathfinding
+namespace Framework.Pathfinding.Runtime
 {
-    // 线程池管理器
-    public class ThreadPoolManager
-    {
-        private int m_maxThreads;
-        private int m_availableThreads;
-        private object m_lockObject;
-        
-        public ThreadPoolManager()
-        {
-            // 根据设备性能自动调整线程数
-            int processorCount = SystemInfo.processorCount;
-            m_maxThreads = Mathf.Max(1, processorCount - 1); // 保留一个核心给主线程
-            m_availableThreads = m_maxThreads;
-            m_lockObject = new object();
-            
-            Debug.Log($"ThreadPoolManager initialized with {m_maxThreads} threads");
-        }
-        
-        // 获取最大线程数
-        public int MaxThreads { get { return m_maxThreads; } }
-        
-        // 获取可用线程数
-        public int AvailableThreads { get { return m_availableThreads; } }
-        
-        // 执行任务
-        public Task<T> ExecuteTask<T>(Func<T> function)
-        {
-            lock (m_lockObject)
-            {
-                // 如果没有可用线程，在主线程执行
-                if (m_availableThreads <= 0)
-                {
-                    return Task.FromResult(function());
-                }
-                
-                m_availableThreads--;
-            }
-            
-            return Task.Run(() =>
-            {
-                try
-                {
-                    return function();
-                }
-                finally
-                {
-                    lock (m_lockObject)
-                    {
-                        m_availableThreads++;
-                    }
-                }
-            });
-        }
-        
-        // 重置线程池
-        public void Reset()
-        {
-            lock (m_lockObject)
-            {
-                m_availableThreads = m_maxThreads;
-            }
-        }
-    }
-    
-    // AStar寻路类，实现AStar算法的核心逻辑
+    // 
     public class AStar
     {
+        private AStarPathfinding m_System;
         private Map m_map;
         private PriorityQueue m_openSet;
         private HashSet<Node> m_closedSet;
@@ -83,15 +23,13 @@ namespace AStarPathfinding
         private List<Grid> m_path;
         private Node m_endNode;
         private bool m_useMultiThreading;
-        private ThreadPoolManager m_threadPool;
         private PathCache m_pathCache;
 
         public Map Map { get { return m_map; } }
         public bool UseMultiThreading { get { return m_useMultiThreading; } }
-        public ThreadPoolManager ThreadPool { get { return m_threadPool; } }
-
-        public AStar(Map map)
+        public AStar(AStarPathfinding system, Map map)
         {
+            m_System = system;
             m_map = map;
             m_openSet = new PriorityQueue();
             m_closedSet = new HashSet<Node>();
@@ -102,7 +40,6 @@ namespace AStarPathfinding
             m_path = new List<Grid>();
             m_endNode = new Node();
             m_useMultiThreading = false;
-            m_threadPool = new ThreadPoolManager();
             m_pathCache = new PathCache();
 
             // 预分配所有节点
@@ -114,58 +51,43 @@ namespace AStarPathfinding
                 }
             }
         }
-
         //-------------------------------------------
-
         // 设置是否使用多线程
         public void SetUseMultiThreading(bool useMultiThreading)
         {
             m_useMultiThreading = useMultiThreading;
         }
-
         //-------------------------------------------
-
         // 设置单位体积
         public void SetUnitSize(int width, int height)
         {
             m_unitWidth = width;
             m_unitHeight = height;
         }
-
         //-------------------------------------------
-
         // 添加忽略的阻挡类型
         public void AddIgnoredBlockType(int blockType)
         {
             m_ignoredBlockTypes |= (1 << blockType);
         }
-
         //-------------------------------------------
-
         // 移除忽略的阻挡类型
         public void RemoveIgnoredBlockType(int blockType)
         {
             m_ignoredBlockTypes &= ~(1 << blockType);
         }
-
         //-------------------------------------------
-
-        // 清空忽略的阻挡类型
         public void ClearIgnoredBlockTypes()
         {
             m_ignoredBlockTypes = 0;
         }
-
         //-------------------------------------------
-
         // 检查阻挡类型是否被忽略
         public bool IsBlockTypeIgnored(int blockType)
         {
             return (m_ignoredBlockTypes & (1 << blockType)) != 0;
         }
-
         //-------------------------------------------
-
         // 寻路方法
         public List<Grid> FindPath(int startX, int startZ, int endX, int endZ)
         {
@@ -182,7 +104,7 @@ namespace AStarPathfinding
             if (m_useMultiThreading)
             {
                 // 使用线程池执行多线程寻路
-                Task<List<Grid>> task = m_threadPool.ExecuteTask(() =>
+                Task<List<Grid>> task = m_System.threadPoolManager.ExecuteTask(() =>
                 {
                     return FindPathInternal(startX, startZ, endX, endZ);
                 });
@@ -206,7 +128,7 @@ namespace AStarPathfinding
             
             return path;
         }
-        
+        //-------------------------------------------
         // 计算路径代价
         private float CalculatePathCost(List<Grid> path)
         {
@@ -220,9 +142,7 @@ namespace AStarPathfinding
             }
             return cost;
         }
-
         //-------------------------------------------
-
         // 内部寻路方法
         private List<Grid> FindPathInternal(int startX, int startZ, int endX, int endZ)
         {
@@ -309,13 +229,10 @@ namespace AStarPathfinding
                     }
                 }
             }
-
             // 没有找到路径
             return null;
         }
-
         //-------------------------------------------
-
         // 检查单位体积是否可以通过
         private bool IsUnitCanFit(int x, int z)
         {
@@ -337,9 +254,7 @@ namespace AStarPathfinding
 
             return true;
         }
-
         //-------------------------------------------
-
         // 计算两个节点之间的距离
         private float GetDistance(Node a, int bX, int bZ)
         {
@@ -350,9 +265,7 @@ namespace AStarPathfinding
                 return 14 * dz + 10 * (dx - dz);
             return 14 * dx + 10 * (dz - dx);
         }
-
         //-------------------------------------------
-
         // 计算两个坐标之间的距离
         private float GetDistance(int aX, int aZ, int bX, int bZ)
         {
@@ -363,9 +276,7 @@ namespace AStarPathfinding
                 return 14 * dz + 10 * (dx - dz);
             return 14 * dx + 10 * (dz - dx);
         }
-
         //-------------------------------------------
-
         // 回溯路径
         private List<Grid> RetracePath(Node startNode, Node endNode)
         {

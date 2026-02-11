@@ -1,10 +1,11 @@
 using UnityEngine;
 using System.Collections.Generic;
 
-namespace AStarPathfinding
+namespace Framework.Pathfinding.Runtime
 {
     public class RVOTest : MonoBehaviour
     {
+        AStarPathfinding m_System = new AStarPathfinding();
         public int unitCount = 20;
         public float spawnRadius = 10f;
         public float targetRadius = 20f;
@@ -22,16 +23,16 @@ namespace AStarPathfinding
         private void Start()
         {
             // 创建地图
-            m_map = AStarPathfinding.CreateMap(100, 100, 1f);
+            m_map = m_System.CreateMap(100, 100, 1f);
             
             // 创建AStar实例
-            m_astar = AStarPathfinding.CreateAStar(m_map);
+            m_astar = m_System.CreateAStar(m_map);
             
             // 创建单位管理器
-            m_unitManager = AStarPathfinding.CreateUnitManager(m_map);
+            m_unitManager = m_System.CreateUnitManager(m_map);
             
             // 创建RVO算法
-            m_rvo = AStarPathfinding.CreateRVOAlgorithm();
+            m_rvo = m_System.CreateRVOAlgorithm();
             
             // 初始化单位列表
             m_units = new List<Unit>();

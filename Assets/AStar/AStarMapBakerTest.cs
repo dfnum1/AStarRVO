@@ -1,11 +1,13 @@
-using UnityEngine;
+using Framework.Pathfinding.Runtime;
 using System.Collections.Generic;
+using UnityEngine;
 
-namespace AStarPathfinding
+namespace Framework.Pathfinding.Runtime
 {
     public class AStarMapBakerTest : MonoBehaviour
     {
-        public AStarMapBaker mapBaker;
+        private AStarPathfinding m_System = new AStarPathfinding();
+        public AStarMapBaker mapBaker = new AStarMapBaker();
         public bool autoBakeOnStart = false;
 
         private Map m_bakedMap;
@@ -25,15 +27,6 @@ namespace AStarPathfinding
 
         private void Start()
         {
-            if (mapBaker == null)
-            {
-                mapBaker = GetComponent<AStarMapBaker>();
-                if (mapBaker == null)
-                {
-                    mapBaker = gameObject.AddComponent<AStarMapBaker>();
-                }
-            }
-
             if (autoBakeOnStart)
             {
                 BakeMap();
@@ -44,12 +37,12 @@ namespace AStarPathfinding
             m_endPos = transform.position + new Vector3(10, 0, 10);
         }
 
-        
+
 
         public void BakeMap()
         {
             m_bakedMap = mapBaker.BakeMap();
-            m_astar = new AStar(m_bakedMap);
+            m_astar = new AStar(m_System,m_bakedMap);
             CreateGridVisualization();
             Debug.Log("地图烘焙完成，按C键计算路径");
         }
@@ -90,7 +83,7 @@ namespace AStarPathfinding
 
         private Vector2Int GetGridPosition(Vector3 worldPosition)
         {
-            Bounds bounds = mapBaker.GetComponent<AStarMapBaker>().SceneBounds;
+            Bounds bounds = mapBaker.SceneBounds;
             float cellSize = mapBaker.CellSize;
 
             int x = Mathf.FloorToInt((worldPosition.x - bounds.min.x) / cellSize);
@@ -129,7 +122,7 @@ namespace AStarPathfinding
 
             // 创建新的网格对象
             m_gridObjects = new GameObject[m_bakedMap.Width, m_bakedMap.Height];
-            Bounds bounds = mapBaker.GetComponent<AStarMapBaker>().SceneBounds;
+            Bounds bounds = mapBaker.SceneBounds;
             float cellSize = mapBaker.CellSize;
 
             for (int x = 0; x < m_bakedMap.Width; x++)
@@ -218,7 +211,7 @@ namespace AStarPathfinding
                 mapBaker = GetComponent<AStarMapBaker>();
                 if (mapBaker == null)
                 {
-                    mapBaker = gameObject.AddComponent<AStarMapBaker>();
+                    mapBaker = new AStarMapBaker();
                 }
             }
 
@@ -349,10 +342,10 @@ namespace AStarPathfinding
         private void LoadMap()
         {
             string filePath = UnityEngine.Application.persistentDataPath + "/map.bin";
-            m_bakedMap = AStarPathfinding.LoadMapFromBinary(filePath);
+            m_bakedMap = m_System.LoadMapFromBinary(filePath);
             if (m_bakedMap != null)
             {
-                m_astar = new AStar(m_bakedMap);
+                m_astar = new AStar(m_System,m_bakedMap);
                 CreateGridVisualization();
                 Debug.Log("地图加载成功: " + filePath);
             }

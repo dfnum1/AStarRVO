@@ -1,8 +1,13 @@
+/********************************************************************
+生成日期:	3:10:2019  15:03
+类    名: 	PriorityQueue
+作    者:	HappLI
+描    述:	大小堆（优先队列）类，用于AStar算法的高效路径搜索
+*********************************************************************/
 using System.Collections.Generic;
 
-namespace AStarPathfinding
+namespace Framework.Pathfinding.Runtime
 {
-    // 大小堆（优先队列）类，用于AStar算法的高效路径搜索
     public class PriorityQueue
     {
         private List<Node> m_heap;

@@ -1,9 +1,14 @@
+/********************************************************************
+生成日期:	3:10:2019  15:03
+类    名: 	AStarMapBaker
+作    者:	HappLI
+描    述:   地图烘焙器，负责根据场景中的物体生成A*寻路地图数据，并提供保存功能。
+*********************************************************************/
+#if UNITY_EDITOR
 using UnityEngine;
-using System.Collections.Generic;
-
-namespace AStarPathfinding
+namespace Framework.Pathfinding.Runtime
 {
-    public class AStarMapBaker : MonoBehaviour
+    public class AStarMapBaker
     {
         [Header("烘焙设置")]
         [SerializeField] private float cellSize = 1f; // 格子大小
@@ -43,7 +48,7 @@ namespace AStarPathfinding
             bool hasBounds = false;
 
             // 查找所有带Renderer的物体
-            Renderer[] renderers = FindObjectsOfType<Renderer>();
+            Renderer[] renderers = GameObject.FindObjectsOfType<Renderer>();
             foreach (Renderer renderer in renderers)
             {
                 // 跳过地形（如果不包含）
@@ -305,3 +310,4 @@ namespace AStarPathfinding
         }
     }
 }
+#endif

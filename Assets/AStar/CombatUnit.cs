@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace AStarPathfinding
+namespace Framework.Pathfinding.Runtime
 {
     // 目标接口
     public interface ITarget

@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using ExternEngine;
 
-namespace AStarPathfinding
+namespace Framework.Pathfinding.Runtime
 {
     // RVO算法核心实现
     public class RVOAlgorithm

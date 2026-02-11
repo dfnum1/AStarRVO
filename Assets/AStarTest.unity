@@ -592,6 +592,69 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 975135825}
   m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!1 &1146630265
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1146630267}
+  - component: {fileID: 1146630266}
+  m_Layer: 0
+  m_Name: Test_Op
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 0
+--- !u!114 &1146630266
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1146630265}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9131452351f3bc84c8853bff19866181, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  mapWidth: 30
+  mapHeight: 30
+  cellSize: 1
+  useMultiThreading: 1
+  useRVO: 1
+  unitWidth: 1
+  unitHeight: 1
+  unitCount: 50
+  unitTest: 0
+  showPaths: 1
+  rvoTimeHorizon: 1.91
+  rvoTimeHorizonObs: 2
+  rvoRadiusPower: 0.75
+  lateralAvoidanceStrength: 0.13
+  replanSpeedThreshold: 0.72
+  replanWaitTime: 0.97
+  enableLateralAvoidance: 1
+  enableReplanPath: 1
+  unitWeight: 1
+--- !u!4 &1146630267
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1146630265}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -2.35, y: 0, z: 1.75}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_RootOrder: 4
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1700085185
 GameObject:
   m_ObjectHideFlags: 0
@@ -796,10 +859,10 @@ MonoBehaviour:
   mapHeight: 30
   cellSize: 1
   useMultiThreading: 1
-  useRVO: 1
+  useRVO: 0
   unitWidth: 1
   unitHeight: 1
-  unitCount: 1
+  unitCount: 50
   unitTest: 0
   showPaths: 1
 --- !u!4 &1775697366
